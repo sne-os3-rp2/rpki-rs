@@ -354,18 +354,6 @@ mod test {
     fn ipfs_tal_read() {
         let tal = include_bytes!("../test-data/ipfs.tal");
         let tal = Tal::read("ipfs.tal", &mut tal.as_ref()).unwrap();
-        for uri in &tal.uris {
-            match uri {
-                TalUri::Ipns(value) => {
-                    println!("{:?}", value.get_ta_publish_key());
-                    println!("{:?}", value.get_repo_publish_key());
-                },
-                TalUri::Https(value) => {}
-                TalUri::Rsync(value) => {}
-            };
-
-        }
-
         let cert = Cert::decode(Bytes::from_static(
             include_bytes!("../test-data/ta.cer")
         )).unwrap();
@@ -373,6 +361,29 @@ mod test {
             tal.key_info(),
             cert.subject_public_key_info(),
         );
+    }
+
+    #[test]
+    fn read_ipns_hash() {
+        let tal = include_bytes!("../test-data/ipfs.tal");
+        let tal = Tal::read("ipfs.tal", &mut tal.as_ref()).unwrap();
+
+        if let TalUri::Ipns(ipns) = tal.uris.iter().nth(0).unwrap() {
+            let ta_hash = ipns.get_ta_publish_key();
+            assert_eq!(
+                ta_hash,
+                "QmNUdCnpRAkFgGaa1G3BE4jwmvzzeSrwa4m35CiGsqBEWk",
+            );
+
+            let repo_hash = ipns.get_repo_publish_key();
+            assert_eq!(
+                repo_hash,
+                "QmcKcxt4cUwiA3CM1SLpGJLQpPYkuF6GWo6bsLLyt5cNuj",
+            );
+        } else {
+            panic!("IPNS URIs expected");
+        };
+
     }
 
     #[test]
