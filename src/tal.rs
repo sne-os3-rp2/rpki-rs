@@ -165,6 +165,7 @@ fn next_entry(entry: &DirEntry) -> Result<Option<Tal>, ReadError> {
 pub enum TalUri {
     Rsync(uri::Rsync),
     Https(uri::Https),
+    Ipns(uri::Ipns)
 }
 
 impl TalUri {
@@ -180,7 +181,10 @@ impl TalUri {
         if let Ok(uri) = uri::Rsync::from_bytes(bytes.clone()) {
             return Ok(TalUri::Rsync(uri))
         }
-        uri::Https::from_bytes(bytes).map(Into::into)
+        if let Ok(uri) = uri::Https::from_bytes(bytes.clone()) {
+            return Ok(TalUri::Https(uri))
+        }
+        uri::Ipns::from_bytes(bytes).map(Into::into)
     }
 
     pub fn is_rsync(&self) -> bool {
@@ -213,6 +217,11 @@ impl From<uri::Https> for TalUri {
     }
 }
 
+impl From<uri::Ipns> for TalUri {
+    fn from(uri: uri::Ipns) -> Self {
+        TalUri::Ipns(uri)
+    }
+}
 
 //--- TryFrom and FromStr
 
@@ -239,7 +248,8 @@ impl fmt::Display for TalUri {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             TalUri::Rsync(ref uri) => uri.fmt(f),
-            TalUri::Https(ref uri) => uri.fmt(f)
+            TalUri::Https(ref uri) => uri.fmt(f),
+            TalUri::Ipns(ref uri) => uri.fmt(f),
         }
     }
 }
@@ -331,6 +341,31 @@ mod test {
     fn tal_read() {
         let tal = include_bytes!("../test-data/ripe.tal");
         let tal = Tal::read("ripe.tal", &mut tal.as_ref()).unwrap();
+        let cert = Cert::decode(Bytes::from_static(
+            include_bytes!("../test-data/ta.cer")
+        )).unwrap();
+        assert_eq!(
+            tal.key_info(),
+            cert.subject_public_key_info(),
+        );
+    }
+
+    #[test]
+    fn ipfs_tal_read() {
+        let tal = include_bytes!("../test-data/ipfs.tal");
+        let tal = Tal::read("ipfs.tal", &mut tal.as_ref()).unwrap();
+        for uri in &tal.uris {
+            match uri {
+                TalUri::Ipns(value) => {
+                    println!("{:?}", value.get_ta_publish_key());
+                    println!("{:?}", value.get_repo_publish_key());
+                },
+                TalUri::Https(value) => {}
+                TalUri::Rsync(value) => {}
+            };
+
+        }
+
         let cert = Cert::decode(Bytes::from_static(
             include_bytes!("../test-data/ta.cer")
         )).unwrap();

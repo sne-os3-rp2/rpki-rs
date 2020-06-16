@@ -360,6 +360,108 @@ impl fmt::Display for RsyncModule {
     }
 }
 
+//-------------IPNS ---------------------------------------------------------
+
+#[derive(Clone, Debug)]
+pub struct Ipns {
+    uri: Bytes,
+}
+
+impl Ipns {
+    pub fn from_string(s: String) -> Result<Self, Error> {
+        Self::from_bytes(Bytes::from(s))
+    }
+
+    pub fn from_bytes(bytes: Bytes) -> Result<Self, Error> {
+        if !is_uri_ascii(&bytes) {
+            return Err(Error::NotAscii)
+        }
+
+        let (scheme, _) = Scheme::from_prefix(bytes.as_ref())?;
+        if !scheme.is_ipns() {
+            return Err(Error::BadScheme)
+        }
+
+        Ok(Ipns { uri: bytes})
+    }
+
+    pub fn as_str(&self) -> &str {
+        unsafe { str::from_utf8_unchecked(self.uri.as_ref()) }
+    }
+
+    pub fn get_ta_publish_key(&self) -> &str {
+        let parts = self.as_str().split("/").collect::<Vec<&str>>();
+        parts[1]
+    }
+
+    pub fn get_repo_publish_key(&self) -> &str {
+        let parts = self.as_str().split("/").collect::<Vec<&str>>();
+        parts[2]
+    }
+}
+
+impl fmt::Display for Ipns {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.as_str().fmt(f)
+    }
+}
+
+//--- Serialize and Deserialize
+
+impl Serialize for Ipns {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer {
+        self.as_str().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Ipns {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where D: Deserializer<'de> {
+        deserializer.deserialize_string(UriVisitor::<Ipns>::default())
+    }
+}
+
+//--- TryFrom and FromStr
+
+impl TryFrom<String> for Ipns {
+    type Error = Error;
+
+    fn try_from(s: String) -> Result<Self, Error> {
+        Self::from_string(s)
+    }
+}
+
+impl str::FromStr for Ipns {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Error> {
+        Self::from_bytes(Bytes::copy_from_slice(s.as_ref()))
+    }
+}
+
+//--- PartialEq and Eq
+
+impl PartialEq for Ipns {
+    fn eq(&self, other: &Self) -> bool {
+        self.uri[..].eq_ignore_ascii_case(
+            &other.uri[..]
+        )
+    }
+}
+
+impl Eq for Ipns { }
+
+
+
+impl hash::Hash for Ipns {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        for ch in self.uri[..].iter() {
+            ch.to_ascii_lowercase().hash(state)
+        }
+        self.uri[..].hash(state)
+    }
+}
 
 //------------ Https ---------------------------------------------------------
 
@@ -579,7 +681,8 @@ impl fmt::Display for Https {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Scheme {
     Https,
-    Rsync
+    Rsync,
+    Ipns,
 }
 
 impl Scheme {
@@ -593,6 +696,9 @@ impl Scheme {
         }
         else if starts_with_ignore_case(s, b"rsync://") {
             Ok((Scheme::Rsync, 8))
+        }
+        else if starts_with_ignore_case(s, b"ipns/") {
+            Ok((Scheme::Ipns, 5))
         }
         else {
             Err(Error::BadScheme)
@@ -619,10 +725,18 @@ impl Scheme {
         }
     }
 
+    pub fn is_ipns(self) -> bool {
+        match self {
+            Scheme::Ipns => true,
+            _ => false
+        }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Scheme::Https => "https",
             Scheme::Rsync => "rsync",
+            Scheme::Ipns => "ipns",
         }
     }
 
