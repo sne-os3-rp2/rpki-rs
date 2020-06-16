@@ -9,6 +9,7 @@ use bcder::encode::PrimitiveContent;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use serde::de;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::path::PathBuf;
 
 
 //------------ Rsync ---------------------------------------------------------
@@ -43,6 +44,16 @@ impl Rsync {
 
     pub fn from_slice(slice: &[u8]) -> Result<Self, Error> {
         Self::from_bytes(Bytes::copy_from_slice(slice))
+    }
+
+    pub fn to_ipns_ta_path(&self, uri_ipns: &Ipns) -> PathBuf {
+        PathBuf::from(uri_ipns.get_ta_publish_key())
+            .join(self.path())
+    }
+
+    pub fn to_ipns_repo_path(&self, uri_ipns: &Ipns) -> PathBuf {
+        PathBuf::from(uri_ipns.get_repo_publish_key())
+            .join(self.path())
     }
 
     pub fn from_bytes(mut bytes: Bytes) -> Result<Self, Error> {
@@ -842,6 +853,18 @@ impl error::Error for Error { }
 mod tests {
     use super::*;
     use std::str::FromStr;
+
+    #[test]
+    fn rsync_to_ipns() {
+        let rsync = Rsync::from_slice(b"rsync://host/module/foo/bar").unwrap();
+        let ipns_path = Ipns::from_string(String::from("ipns/tal-key/repo-key")).unwrap();
+        let ta_path = rsync.to_ipns_ta_path(&ipns_path).display().to_string();
+        let repo_path = rsync.to_ipns_repo_path(&ipns_path).display().to_string();
+
+        assert_eq!(ta_path, "tal-key/foo/bar");
+        assert_eq!(repo_path, "repo-key/foo/bar");
+
+    }
 
     #[test]
     fn rsync_check_uri() {
